@@ -54,6 +54,7 @@ export interface AppState {
   updateHit: (step: number, slice: number, patch: Partial<Hit>) => void;
   setBpm: (bpm: number) => void;
   setSwing: (swing: number) => void;
+  setGate: (gate: number) => void;
   setFx: (patch: Partial<FxParams>) => void;
   setSteps: (steps: number) => void;
   setBars: (bars: number) => void;
@@ -114,6 +115,9 @@ export const useStore = create<AppState>((set) => ({
 
   setSwing: (swing) =>
     set((s) => ({ pattern: { ...s.pattern, swing: clamp(swing, PATTERN_LIMITS.swing.min, PATTERN_LIMITS.swing.max) } })),
+
+  setGate: (gate) =>
+    set((s) => ({ pattern: { ...s.pattern, gate: clamp(gate, PATTERN_LIMITS.gate.min, PATTERN_LIMITS.gate.max) } })),
 
   setFx: (patch) => set((s) => ({ pattern: { ...s.pattern, fx: { ...s.pattern.fx, ...patch } } })),
 
@@ -186,7 +190,7 @@ export const useStore = create<AppState>((set) => ({
         if (slice >= 0) hits.push({ step, slice: slice % s.sliceCount, pitch: 0, reverse: false, gain: 1, ratchet: 1 });
       });
       return {
-        pattern: createEmptyPattern({ steps, bars: 1, bpm: preset.bpm, hits, fx: s.pattern.fx }),
+        pattern: createEmptyPattern({ steps, bars: 1, bpm: preset.bpm, gate: s.pattern.gate, hits, fx: s.pattern.fx }),
         statusMessage: `Loaded preset: ${preset.name}`,
       };
     }),

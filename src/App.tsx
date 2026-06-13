@@ -1,5 +1,7 @@
 /**
- * AmenForge root. Owns the imperative AudioEngine, mirrors store ⇄ engine.
+ * AmenForge root. Owns the imperative AudioEngine, mirrors store ⇄ engine,
+ * and orchestrates load / play / export. The store stays audio-free; this
+ * component is the single bridge between React state and the Web Audio graph.
  */
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "./state/store";
@@ -44,14 +46,19 @@ export function App() {
   const [peaks, setPeaks] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
 
+  // Wire the engine's step callback into the store once.
+  // NOTE: we intentionally do NOT dispose the engine in this cleanup. The
+  // engine is a page-lifetime singleton, and React StrictMode double-invokes
+  // effects in dev (mount → cleanup → mount). Disposing here tears down the
+  // audio graph on that simulated unmount and leaves a dead, silent engine.
   useEffect(() => {
     engine.setStepListener((step) => useStore.getState().setCurrentStep(step));
     return () => {
       engine.setStepListener(null);
-      engine.dispose();
     };
   }, [engine]);
 
+  // Mirror every pattern change into the engine (incl. FX, tempo).
   useEffect(() => {
     engine.setPattern(pattern);
   }, [engine, pattern]);
@@ -65,6 +72,7 @@ export function App() {
     store.setSampleLoaded(true);
     store.setStatus(`Loaded break · ${slices} slices detected. Hit Play or Generate.`);
     if (buf) setPeaks(computePeaks(buf));
+    // re-push pattern now that slices exist
     engine.setPattern(useStore.getState().pattern);
   };
 
@@ -132,7 +140,9 @@ export function App() {
 
   return (
     <div className="app">
-      <h1>Amen<span className="accent">Forge</span></h1>
+      <h1>
+        Amen<span className="accent">Forge</span>
+      </h1>
       <p className="subtitle">Chop the Amen break, sequence it, and generatively mangle it into jungle.</p>
 
       <TransportBar

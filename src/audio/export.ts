@@ -1,11 +1,17 @@
 /**
  * Offline render → WAV export.
+ *
+ * Re-plays the pattern through an OfflineAudioContext (no realtime transport),
+ * scheduling each hit as a plain AudioBufferSource so the bounce is
+ * sample-accurate and deterministic. Each trigger plays a freshly-extracted
+ * slice buffer (optionally reversed), pitched via playbackRate. Browser only.
  */
 import type { Pattern } from "../state/pattern";
 import { totalSteps, hitsAtStep, semitonesToRate } from "../state/pattern";
 import type { SliceRange } from "./slicer";
 import { encodeWav } from "./buffer";
 
+/** Extract one slice into a standalone AudioBuffer, optionally reversed. */
 function extractSlice(
   ctx: BaseAudioContext,
   source: AudioBuffer,
@@ -30,6 +36,10 @@ export interface RenderResult {
   durationSec: number;
 }
 
+/**
+ * Render `pattern` over its full length (steps × bars) plus a short tail.
+ * Returns a PCM16 WAV ArrayBuffer.
+ */
 export async function renderPatternToWav(
   audioBuffer: AudioBuffer,
   slices: SliceRange[],
@@ -42,7 +52,9 @@ export async function renderPatternToWav(
   const stepDur = (secPerBeat * 4) / pattern.steps;
   const total = totalSteps(pattern);
   const loops = Math.max(1, Math.floor(repeats));
-  const tail = 0.5;
+  // Generous tail so a full-length chop on the final step rings out rather than
+  // being clipped at the render boundary.
+  const tail = 1.0;
   const durationSec = total * stepDur * loops + tail;
   const frames = Math.ceil(durationSec * sampleRate);
 
@@ -61,15 +73,21 @@ export async function renderPatternToWav(
         const ratchet = Math.max(1, hit.ratchet);
         const sub = stepDur / ratchet;
         const buf = extractSlice(ctx, audioBuffer, slice, hit.reverse);
+        const rate = semitonesToRate(hit.pitch);
+        // Gate scales the slice's natural length (1 = full ring-out); rolls are
+        // additionally capped so the stutters stay tight.
+        const gate = Math.min(1, Math.max(0.05, pattern.gate));
+        const gatedDur = Math.max(0.02, (buf.duration / rate) * gate);
         for (let j = 0; j < ratchet; j++) {
           const src = ctx.createBufferSource();
           src.buffer = buf;
-          src.playbackRate.value = semitonesToRate(hit.pitch);
+          src.playbackRate.value = rate;
           const gain = ctx.createGain();
           gain.gain.value = Math.max(0, hit.gain);
           src.connect(gain).connect(ctx.destination);
           src.start(when + j * sub);
-          src.stop(when + j * sub + Math.min(sub * 1.8, buf.duration));
+          const playDur = ratchet === 1 ? gatedDur : Math.min(sub * 1.8, gatedDur);
+          src.stop(when + j * sub + playDur);
         }
       }
     }

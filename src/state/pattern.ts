@@ -36,6 +36,12 @@ export interface Pattern {
   steps: number; // steps per bar
   bars: number;
   swing: number; // 0..1, MPC-style off-beat delay
+  /**
+   * Global chop length / gate: 0 = very short gated stabs, 1 = each slice
+   * rings out its full natural length (the region shown in the waveform).
+   * Ratchet rolls are always also capped to stay tight.
+   */
+  gate: number;
   hits: Hit[];
   fx: FxParams;
 }
@@ -45,6 +51,7 @@ export const PATTERN_LIMITS = {
   steps: { min: 4, max: 32 },
   bars: { min: 1, max: 8 },
   swing: { min: 0, max: 0.75 },
+  gate: { min: 0.05, max: 1 },
   pitch: { min: -24, max: 24 },
   gain: { min: 0, max: 1 },
   ratchet: { min: 1, max: 8 },
@@ -65,6 +72,7 @@ export function createEmptyPattern(partial: Partial<Pattern> = {}): Pattern {
     steps: clamp(partial.steps ?? 16, PATTERN_LIMITS.steps.min, PATTERN_LIMITS.steps.max),
     bars: clamp(partial.bars ?? 1, PATTERN_LIMITS.bars.min, PATTERN_LIMITS.bars.max),
     swing: clamp(partial.swing ?? 0, PATTERN_LIMITS.swing.min, PATTERN_LIMITS.swing.max),
+    gate: clamp(partial.gate ?? 1, PATTERN_LIMITS.gate.min, PATTERN_LIMITS.gate.max),
     hits: partial.hits ? partial.hits.map(normaliseHit) : [],
     fx: { ...defaultFx(), ...partial.fx },
   };
@@ -102,6 +110,11 @@ function hitKey(step: number, slice: number): string {
   return `${step}:${slice}`;
 }
 
+/**
+ * Toggle a hit at (step, slice). Returns a NEW pattern (immutable update) so
+ * React state and undo stacks stay simple. If a hit exists it is removed,
+ * otherwise one is added with the supplied defaults.
+ */
 export function toggleHit(p: Pattern, step: number, slice: number, defaults: Partial<Hit> = {}): Pattern {
   const key = hitKey(step, slice);
   const exists = p.hits.some((h) => hitKey(h.step, h.slice) === key);
@@ -143,6 +156,11 @@ export function serializePattern(p: Pattern): string {
   return JSON.stringify(out);
 }
 
+/**
+ * Parse a serialised pattern, tolerating malformed / partial / hostile input.
+ * Always returns a valid Pattern (falls back to defaults for bad fields)
+ * rather than throwing — robustness for save files and shared URLs.
+ */
 export function deserializePattern(json: string): Pattern {
   let raw: unknown;
   try {
@@ -173,6 +191,7 @@ export function deserializePattern(json: string): Pattern {
     steps: typeof obj.steps === "number" ? obj.steps : undefined,
     bars: typeof obj.bars === "number" ? obj.bars : undefined,
     swing: typeof obj.swing === "number" ? obj.swing : undefined,
+    gate: typeof obj.gate === "number" ? obj.gate : undefined,
     hits,
     fx: {
       reverb: typeof fx.reverb === "number" ? clamp(fx.reverb, 0, 1) : 0,
