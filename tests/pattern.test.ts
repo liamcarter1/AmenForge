@@ -7,6 +7,7 @@ import {
   setHit,
   getHit,
   hitsAtStep,
+  stepsToNextHit,
   clearPattern,
   totalSteps,
   serializePattern,
@@ -31,6 +32,32 @@ describe("createEmptyPattern", () => {
     expect(p.bpm).toBe(PATTERN_LIMITS.bpm.max);
     expect(p.steps).toBe(PATTERN_LIMITS.steps.min);
     expect(p.bars).toBe(PATTERN_LIMITS.bars.max);
+  });
+});
+
+describe("stepsToNextHit", () => {
+  it("returns the gap (in steps) to the next hit, wrapping the loop", () => {
+    let p = createEmptyPattern({ steps: 16 });
+    p = setHit(p, makeHit({ step: 0, slice: 0 }));
+    p = setHit(p, makeHit({ step: 4, slice: 1 }));
+    p = setHit(p, makeHit({ step: 6, slice: 2 }));
+    expect(stepsToNextHit(p, 0)).toBe(4); // 0 -> 4
+    expect(stepsToNextHit(p, 4)).toBe(2); // 4 -> 6
+    expect(stepsToNextHit(p, 6)).toBe(10); // 6 -> wrap to 0 (16 - 6)
+    expect(stepsToNextHit(p, 1)).toBe(3); // mid-gap -> next hit at 4
+  });
+
+  it("gives a lone hit the whole loop", () => {
+    let p = createEmptyPattern({ steps: 16 });
+    p = setHit(p, makeHit({ step: 3, slice: 0 }));
+    expect(stepsToNextHit(p, 3)).toBe(16);
+  });
+
+  it("returns 1 when consecutive steps both have hits", () => {
+    let p = createEmptyPattern({ steps: 16 });
+    p = setHit(p, makeHit({ step: 5, slice: 0 }));
+    p = setHit(p, makeHit({ step: 6, slice: 1 }));
+    expect(stepsToNextHit(p, 5)).toBe(1);
   });
 });
 

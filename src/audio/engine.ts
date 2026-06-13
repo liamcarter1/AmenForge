@@ -9,7 +9,7 @@
  */
 import * as Tone from "tone";
 import type { Pattern } from "../state/pattern";
-import { totalSteps, hitsAtStep, semitonesToRate } from "../state/pattern";
+import { totalSteps, hitsAtStep, stepsToNextHit, semitonesToRate } from "../state/pattern";
 import type { SliceRange } from "./slicer";
 import { slicesFromOnsets, equalSlices } from "./slicer";
 import { detectOnsets } from "./onset";
@@ -114,18 +114,23 @@ export class AudioEngine {
     const p = this.pattern;
     if (!p || this.slices.length === 0) return;
     const swing = step % 2 === 1 ? Math.min(0.75, p.swing) * 0.5 * stepDur : 0;
+    // Sustain slot: real-time seconds until the next scheduled hit. gate scales
+    // this, so gate = 1 plays each chop continuously up to the next hit and the
+    // break reconstructs gaplessly instead of leaving silent stutters.
+    const slotSec = stepsToNextHit(p, step) * stepDur;
     for (const hit of hitsAtStep(p, step)) {
       const slice = this.slices[hit.slice % this.slices.length];
       const ratchet = Math.max(1, hit.ratchet);
       if (ratchet === 1) {
-        // Single hit: the chop plays for `gate` × its natural length (the slice
-        // shown in the waveform). gate = 1 rings out fully; lower = tighter.
+        // Single hit: the chop sustains for `gate` × the slot (time to next hit).
+        // gate = 1 plays gaplessly into the following audio; lower = tighter stab.
         this.voices.trigger(slice, {
           pitch: hit.pitch,
           reverse: hit.reverse,
           gain: hit.gain,
           time: time + swing,
           gate: p.gate,
+          slotSec,
         });
       } else {
         // Ratchet roll: tight retriggers, also capped so the stutters stay distinct.

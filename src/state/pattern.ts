@@ -141,6 +141,22 @@ export function hitsAtStep(p: Pattern, step: number): Hit[] {
   return p.hits.filter((h) => h.step === step).sort((a, b) => a.slice - b.slice);
 }
 
+/**
+ * Number of steps (1..totalSteps) from `fromStep` until the next step that
+ * carries any hit, wrapping around the loop. This is the "slot" a chop can
+ * sustain into so playback stays gapless — at gate = 1 a chop rings out until
+ * the next hit instead of stopping at its own slice boundary. If no other step
+ * has a hit, the lone hit owns the whole loop.
+ */
+export function stepsToNextHit(p: Pattern, fromStep: number): number {
+  const total = totalSteps(p);
+  if (total <= 0) return 1;
+  for (let d = 1; d <= total; d++) {
+    if (hitsAtStep(p, (fromStep + d) % total).length > 0) return d;
+  }
+  return total;
+}
+
 export function clearPattern(p: Pattern): Pattern {
   return { ...p, hits: [] };
 }

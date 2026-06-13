@@ -7,26 +7,20 @@
  * slice buffer (optionally reversed), pitched via playbackRate. Browser only.
  */
 import type { Pattern } from "../state/pattern";
-import { totalSteps, hitsAtStep, semitonesToRate } from "../state/pattern";
+import { totalSteps, hitsAtStep, stepsToNextHit, semitonesToRate } from "../state/pattern";
 import type { SliceRange } from "./slicer";
 import { encodeWav } from "./buffer";
 
-/** Extract one slice into a standalone AudioBuffer, optionally reversed. */
-function extractSlice(
-  ctx: BaseAudioContext,
-  source: AudioBuffer,
-  slice: SliceRange,
-  reverse: boolean,
-): AudioBuffer {
-  const len = Math.max(1, slice.end - slice.start);
-  const out = ctx.createBuffer(source.numberOfChannels, len, source.sampleRate);
+const EDGE_FADE = 0.003; // 3 ms, matches the realtime voices
+
+/** Build a channel-reversed copy of the full buffer (for reverse playback). */
+function makeReversedBuffer(ctx: BaseAudioContext, source: AudioBuffer): AudioBuffer {
+  const out = ctx.createBuffer(source.numberOfChannels, source.length, source.sampleRate);
   for (let c = 0; c < source.numberOfChannels; c++) {
     const src = source.getChannelData(c);
     const dst = out.getChannelData(c);
-    for (let i = 0; i < len; i++) {
-      const idx = slice.start + i;
-      dst[i] = idx < src.length ? src[reverse ? slice.end - 1 - i : idx] : 0;
-    }
+    const n = src.length;
+    for (let i = 0; i < n; i++) dst[i] = src[n - 1 - i];
   }
   return out;
 }
@@ -63,31 +57,70 @@ export async function renderPatternToWav(
   if (!OfflineCtor) throw new Error("OfflineAudioContext unavailable in this environment");
   const ctx = new OfflineCtor(audioBuffer.numberOfChannels, frames, sampleRate);
 
+  // Read forward from the source and reverse from a pre-mirrored copy, both full
+  // length — so a sustained chop can bleed past its slice.end into the following
+  // break audio, exactly like the realtime engine (src/audio/voices.ts).
+  const forward = audioBuffer;
+  const reversed = makeReversedBuffer(ctx, audioBuffer);
+  const totalFrames = audioBuffer.length;
+  const totalDurSec = totalFrames / sampleRate;
+  const gate = Math.min(1, Math.max(0.05, pattern.gate));
+
+  /** Schedule one voice: full buffer read from `offsetSec` for `playSec`, with
+   *  short gain ramps for click-free (cross-)fades. Mirrors voices.trigger(). */
+  const scheduleVoice = (
+    slice: SliceRange,
+    hit: { reverse: boolean; pitch: number; gain: number },
+    at: number,
+    playSec: number,
+    fadeOut: number,
+  ): void => {
+    const buf = hit.reverse ? reversed : forward;
+    const offsetSec = hit.reverse ? (totalFrames - slice.end) / sampleRate : slice.start / sampleRate;
+    const avail = Math.max(0, totalDurSec - offsetSec);
+    const dur = Math.min(playSec, avail);
+    if (dur <= 0) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = semitonesToRate(hit.pitch);
+    const gain = ctx.createGain();
+    const peak = Math.max(0, hit.gain);
+    const fadeIn = Math.min(EDGE_FADE, dur * 0.5);
+    const fo = Math.min(fadeOut, dur - fadeIn);
+    gain.gain.setValueAtTime(0, at);
+    gain.gain.linearRampToValueAtTime(peak, at + fadeIn);
+    if (fo > 0) gain.gain.setValueAtTime(peak, at + dur - fo);
+    gain.gain.linearRampToValueAtTime(0, at + dur);
+    src.connect(gain).connect(ctx.destination);
+    src.start(at, offsetSec);
+    src.stop(at + dur);
+  };
+
   for (let loop = 0; loop < loops; loop++) {
     const loopStart = loop * total * stepDur;
     for (let step = 0; step < total; step++) {
       const swing = step % 2 === 1 ? Math.min(0.75, pattern.swing) * 0.5 * stepDur : 0;
       const when = loopStart + step * stepDur + swing;
+      const slotSec = stepsToNextHit(pattern, step) * stepDur;
       for (const hit of hitsAtStep(pattern, step)) {
         const slice = slices[hit.slice % slices.length];
+        const sliceSec = (slice.end - slice.start) / sampleRate;
         const ratchet = Math.max(1, hit.ratchet);
-        const sub = stepDur / ratchet;
-        const buf = extractSlice(ctx, audioBuffer, slice, hit.reverse);
-        const rate = semitonesToRate(hit.pitch);
-        // Gate scales the slice's natural length (1 = full ring-out); rolls are
-        // additionally capped so the stutters stay tight.
-        const gate = Math.min(1, Math.max(0.05, pattern.gate));
-        const gatedDur = Math.max(0.02, (buf.duration / rate) * gate);
-        for (let j = 0; j < ratchet; j++) {
-          const src = ctx.createBufferSource();
-          src.buffer = buf;
-          src.playbackRate.value = rate;
-          const gain = ctx.createGain();
-          gain.gain.value = Math.max(0, hit.gain);
-          src.connect(gain).connect(ctx.destination);
-          src.start(when + j * sub);
-          const playDur = ratchet === 1 ? gatedDur : Math.min(sub * 1.8, gatedDur);
-          src.stop(when + j * sub + playDur);
+        if (ratchet === 1) {
+          // Single hit sustains across its slot (gate × time-to-next-hit) with a
+          // crossfade tail so chops reconstruct the break gaplessly at gate 1.
+          const tail = Math.min(0.012, slotSec * 0.25) * gate;
+          const playSec = Math.max(0.02, slotSec * gate) + tail;
+          scheduleVoice(slice, hit, when, playSec, Math.max(EDGE_FADE, tail));
+        } else {
+          // Ratchet roll: tight retriggers of the slice, each capped so the
+          // stutters stay distinct (gate scales the slice's own length here).
+          const sub = stepDur / ratchet;
+          const playSec = Math.min(Math.max(0.02, sliceSec * gate), sub * 1.8);
+          const fadeOut = Math.min(0.015, playSec * 0.4);
+          for (let j = 0; j < ratchet; j++) {
+            scheduleVoice(slice, hit, when + j * sub, playSec, fadeOut);
+          }
         }
       }
     }
