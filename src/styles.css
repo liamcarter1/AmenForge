@@ -1,0 +1,282 @@
+:root {
+  --bg: #0d0f14;
+  --panel: #161a22;
+  --panel-2: #1e2430;
+  --accent: #00e08a;
+  --accent-2: #ff5d73;
+  --text: #e7ecf3;
+  --muted: #8a93a6;
+  --grid-line: #2a3140;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px 20px 60px;
+}
+
+.app h1 {
+  font-size: 22px;
+  letter-spacing: 1px;
+  margin: 0 0 2px;
+}
+
+.app h1 .accent { color: var(--accent); }
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--grid-line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #04150d; border-color: var(--accent); font-weight: 600; }
+button.danger { border-color: var(--accent-2); }
+
+label.control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 90px;
+}
+
+label.control span b { color: var(--text); }
+
+input[type="range"] { width: 120px; accent-color: var(--accent); }
+
+input[type="number"] {
+  width: 70px;
+  background: var(--panel-2);
+  border: 1px solid var(--grid-line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 6px;
+}
+
+.grid-wrap { overflow-x: auto; }
+
+.seq-grid { display: grid; gap: 3px; }
+
+.seq-row {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.seq-label {
+  width: 64px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  padding-right: 8px;
+}
+
+.cell {
+  width: 30px;
+  height: 26px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--grid-line);
+  cursor: pointer;
+  position: relative;
+}
+
+.cell.beat { border-color: #3a4456; }
+.cell.on { background: var(--accent); border-color: var(--accent); }
+
+.cell.on.ratchet::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg, #04150d 0 2px, transparent 2px 4px);
+}
+
+.cell.playhead { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+
+.pads {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+
+.pad {
+  aspect-ratio: 1.4;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--grid-line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.pad.selected { border-color: var(--accent); color: var(--text); }
+.pad.kick { border-left: 3px solid var(--accent); }
+.pad.snare { border-left: 3px solid var(--accent-2); }
+.pad .key { font-size: 14px; color: var(--text); font-weight: 600; }
+.pad.flash { background: var(--accent); color: #04150d; }
+
+.waveform {
+  width: 100%;
+  height: 120px;
+  display: block;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+
+.status { font-size: 12px; color: var(--muted); min-height: 16px; }
+
+.tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--grid-line);
+  color: var(--muted);
+}
+
+/* ── Mobile / touch ─────────────────────────────────────────────────────── */
+
+/* Remove 300 ms tap delay on interactive elements */
+button,
+input[type="range"],
+input[type="checkbox"],
+select,
+.cell,
+.pad,
+.waveform {
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  .app {
+    padding: 10px 10px 80px;
+  }
+
+  .app h1 { font-size: 18px; }
+  .subtitle { font-size: 12px; margin-bottom: 12px; }
+
+  .panel {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+
+  /* Larger tap targets on all buttons */
+  button {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  /* Controls wrap and fill width */
+  .row { gap: 8px; }
+
+  label.control {
+    flex: 1 1 140px;
+  }
+
+  input[type="range"] {
+    width: 100%;
+  }
+
+  /* ── Sequencer grid ── */
+  .cell {
+    width: 24px;
+    height: 32px;
+    border-radius: 4px;
+  }
+
+  .seq-label {
+    width: 52px;
+    font-size: 10px;
+    padding-right: 4px;
+    flex-shrink: 0;
+  }
+
+  .grid-wrap {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+  }
+
+  /* ── Pad bank: 4 columns on mobile ── */
+  .pads {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .pad {
+    aspect-ratio: 1;
+    min-height: 56px;
+    font-size: 12px;
+  }
+
+  .pad .key { font-size: 16px; }
+
+  /* ── Waveform ── */
+  .waveform { height: 80px; }
+}
+
+@media (max-width: 400px) {
+  .cell {
+    width: 20px;
+    height: 28px;
+  }
+
+  .seq-label {
+    width: 44px;
+    font-size: 9px;
+  }
+}
